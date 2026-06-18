@@ -1,6 +1,0 @@
-name = "minor-testdb"
-
-[[d1_databases]]
-binding = "DB"
-database_name = "minor-testdb"
-database_id = "5ad854a0-c8b5-4a45-bc3b-08e436db90b7"
