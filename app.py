@@ -1,10 +1,5 @@
 import gradio as gr
-from services.create_service import generate_create_sql
-from services.insert_service import generate_insert_sql
-from services.query_service import generate_query_sql
-from services.delete_service import generate_delete_sql
-from services.update_service import generate_update_sql
-from services.intent_service import detect_intent
+from services.sql_service import generate_sql
 import pandas as pd
 
 from services.d1_service import (
@@ -33,27 +28,22 @@ def process_request(prompt):
 
     global PENDING_SQL
 
-    intent = detect_intent(prompt)
+    # Generate SQL using unified LangChain SQL Generation Chain
+    sql = generate_sql(prompt)
 
-    if intent == "create_table":
-
-        sql = generate_create_sql(prompt)
-
-    elif intent == "insert_data":
-
-        sql = generate_insert_sql(prompt)
-
-    elif intent == "delete_data":
-
-        sql = generate_delete_sql(prompt)
-
-    elif intent == "update_data":
-
-        sql = generate_update_sql(prompt)
-
-    else:
-
-        sql = generate_query_sql(prompt)
+    if sql.startswith("ERROR:"):
+        err_res = {
+            "success": False,
+            "error": sql
+        }
+        return (
+            sql,
+            err_res,
+            get_schema(),
+            gr.update(visible=False),
+            "",
+            gr.update(visible=False)
+        )
 
     if needs_approval(sql):
 
