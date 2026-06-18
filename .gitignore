@@ -2,3 +2,5 @@ venv/
 .env
 **pycache**/
 *.pyc
+.wrangler/
+
