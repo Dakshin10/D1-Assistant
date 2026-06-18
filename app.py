@@ -157,6 +157,10 @@ def explorer(table_name):
 
     rows, columns = get_table_data(table_name)
 
+    print("TABLE:", table_name)
+    print("ROWS:", rows)
+    print("COLUMNS:", columns)
+
     return pd.DataFrame(
         rows,
         columns=columns
@@ -181,8 +185,7 @@ custom_css = """
 #approval_modal.hide,
 #approval_modal[hidden],
 #approval_modal[style*="display: none"],
-#approval_modal[style*="display:none"],
-#approval_modal:empty {
+#approval_modal[style*="display:none"] {
     display: none !important;
 }
 
@@ -294,16 +297,34 @@ with gr.Blocks(title="Natural Database Assistant") as app:
 
     with gr.Tab("Database Explorer"):
 
-        table_dropdown = gr.Dropdown(
-            choices=get_tables(),
-            label="Select Table"
-        )
+        with gr.Row():
+            table_dropdown = gr.Dropdown(
+                choices=get_tables(),
+                label="Select Table",
+                scale=4
+            )
+            refresh_btn = gr.Button("🔄 Refresh Tables", scale=1)
+
+        view_btn = gr.Button("📂 Fetch & Show Table Data", variant="primary")
 
         table_data = gr.Dataframe(
             label="Table Contents"
         )
 
-        table_dropdown.change(
+        def refresh_tables():
+            return gr.update(choices=get_tables())
+
+        refresh_btn.click(
+            fn=refresh_tables,
+            outputs=table_dropdown
+        )
+
+        table_dropdown.focus(
+            fn=refresh_tables,
+            outputs=table_dropdown
+        )
+
+        view_btn.click(
             fn=explorer,
             inputs=table_dropdown,
             outputs=table_data

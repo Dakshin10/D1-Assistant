@@ -1,46 +1,53 @@
-import sqlite3
-import re
+import subprocess
+import json
 
-DB_NAME = "natural.db"
+DB_NAME = "minor-testdb"
 
 
 def execute_query(sql):
 
     try:
 
-        conn = sqlite3.connect(DB_NAME)
-        cursor = conn.cursor()
+        sql_clean = " ".join(sql.split())
+        cmd = f'npx wrangler d1 execute {DB_NAME} --remote --command="{sql_clean}" --json'
 
-        cursor.execute(sql)
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            shell=True,
+            encoding="utf-8"
+        )
 
-        # If it's a DELETE statement, check if table is empty to reset autoincrement sequence
-        match = re.search(r'(?i)\bDELETE\s+FROM\s+["`\[]?(\w+)["`\]]?', sql)
-        if match:
-            table_name = match.group(1)
-            try:
-                cursor.execute(f"SELECT COUNT(*) FROM [{table_name}]")
-                count = cursor.fetchone()[0]
-                if count == 0:
-                    cursor.execute("DELETE FROM sqlite_sequence WHERE name = ?", (table_name,))
-            except Exception:
-                pass
+        if result.returncode != 0:
+            return {
+                "success": False,
+                "error": result.stderr
+            }
 
-        if sql.strip().upper().startswith("SELECT"):
+        data = json.loads(result.stdout)
 
-            result = cursor.fetchall()
-            columns = [desc[0] for desc in cursor.description]
+        if not data:
+            return {
+                "success": False,
+                "error": "No response from D1"
+            }
 
-            conn.close()
+        d1_response = data[0]
+
+        if sql.strip().upper().startswith(("SELECT", "PRAGMA")):
+
+            rows = d1_response.get("results", [])
+
+            columns = []
+            if rows:
+                columns = list(rows[0].keys())
 
             return {
                 "success": True,
-                "result": result,
+                "result": rows,
                 "columns": columns
             }
-
-        conn.commit()
-
-        conn.close()
 
         return {
             "success": True,
@@ -57,81 +64,86 @@ def execute_query(sql):
 
 def get_schema():
 
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
+    sql = """
+    SELECT name
+    FROM sqlite_master
+    WHERE type='table'
+    """
 
-    cursor.execute("""
-        SELECT name
-        FROM sqlite_master
-        WHERE type='table'
-        AND name NOT LIKE 'sqlite_%'
-    """)
+    result = execute_query(sql)
 
-    tables = cursor.fetchall()
+    if not result["success"]:
+        return result["error"]
 
     schema_text = ""
 
-    for table in tables:
+    for table in result["result"]:
 
-        table_name = table[0]
+        table_name = table["name"]
+
+        if table_name in ["_cf_KV", "sqlite_sequence"]:
+            continue
 
         schema_text += f"\nTable: {table_name}\n"
 
-        cursor.execute(
-            f"PRAGMA table_info({table_name})"
-        )
+        pragma_sql = f"PRAGMA table_info({table_name})"
 
-        columns = cursor.fetchall()
+        pragma_result = execute_query(pragma_sql)
 
-        for column in columns:
+        if pragma_result["success"]:
 
-            schema_text += (
-                f"- {column[1]} ({column[2]})\n"
-            )
+            for column in pragma_result["result"]:
 
-    conn.close()
+                schema_text += (
+                    f"- {column['name']} ({column['type']})\n"
+                )
 
     return schema_text
 
 
 def get_tables():
 
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
+    sql = """
+    SELECT name
+    FROM sqlite_master
+    WHERE type='table'
+    """
 
-    cursor.execute("""
-        SELECT name
-        FROM sqlite_master
-        WHERE type='table'
-        AND name NOT LIKE 'sqlite_%'
-    """)
+    result = execute_query(sql)
 
-    tables = [
-        row[0]
-        for row in cursor.fetchall()
+    print("\n===== GET TABLES =====")
+    print(result)
+    print("======================\n")
+
+    if not result["success"]:
+        return []
+
+    return [
+        row["name"]
+        for row in result["result"]
+        if row["name"] not in ["_cf_KV", "sqlite_sequence"]
     ]
-
-    conn.close()
-
-    return tables
 
 
 def get_table_data(table_name):
 
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
+    sql = f"SELECT * FROM {table_name}"
 
-    cursor.execute(
-        f"SELECT * FROM {table_name}"
-    )
+    result = execute_query(sql)
 
-    rows = cursor.fetchall()
+    if not result["success"]:
+        return [], []
 
-    columns = [
-        description[0]
-        for description in cursor.description
+    rows = result["result"]
+
+    if not rows:
+        return [], []
+
+    columns = list(rows[0].keys())
+
+    data = [
+        list(row.values())
+        for row in rows
     ]
 
-    conn.close()
-
-    return rows, columns
+    return data, columns
